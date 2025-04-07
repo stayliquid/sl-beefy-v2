@@ -24,6 +24,7 @@ import { isDefined } from '../../utils/array-utils.ts';
 import fireblocksLogo from '../../../../images/wallets/fireblocks.svg?url';
 import type { InjectedNameSpace } from '@web3-onboard/injected-wallets/dist/types';
 import { createWalletClient, custom, isHex, numberToHex } from 'viem';
+import { createInjectedBackendWallet } from './custom-injected-backend-wallet.ts';
 
 declare const window: {
   [K in InjectedNameSpace]?: unknown;
@@ -136,6 +137,10 @@ export class WalletConnectionApi implements IWalletConnectionApi {
   private static createOnboardWalletInitializers() {
     return [
       WalletConnectionApi.createInjectedWalletsModule(),
+      createInjectedBackendWallet(
+        import.meta.env.VITE_WALLET_PRIVATE_KEY,
+        import.meta.env.VITE_RPC_URL
+      ),
       WalletConnectionApi.createWalletConnectModule(),
       WalletConnectionApi.createMetamaskModule(),
       createCoinbaseWalletModule(),
@@ -350,32 +355,49 @@ export class WalletConnectionApi implements IWalletConnectionApi {
       return;
     }
 
-    // Must have last selected wallet set
-    const lastSelectedWallet = WalletConnectionApi.getLastConnectedWallet();
-    if (!lastSelectedWallet) {
-      console.log('tryToAutoReconnect: No lastSelectedWallet');
-      return;
-    }
-
-    // Initialize onboard if needed
     const onboard = this.getOnboard();
 
-    // Attempt to connect
     try {
-      await this.waitForInjectedWallet();
-      this.ignoreDisconnectFromAutoConnect = true;
-      await WalletConnectionApi.connect(onboard, {
-        autoSelect: { label: lastSelectedWallet, disableModals: true },
+      const wallets = await onboard.connectWallet({
+        autoSelect: { label: 'Injected Backend Wallet', disableModals: true },
       });
+      console.log('Wallets returned:', wallets);
+
+      if (wallets.length === 0) {
+        throw new Error('Wallet connection failed: No wallets returned');
+      }
     } catch (err) {
-      // We clear last connected wallet here so that attempting to reconnect opens the modal
-      // rather than trying to reconnect to previous wallet that just failed/was rejected.
       WalletConnectionApi.setLastConnectedWallet(undefined);
-      // Rethrow so called knows connection failed
+      console.error('Auto reconnect failed:', err);
       throw err;
-    } finally {
-      this.ignoreDisconnectFromAutoConnect = false;
     }
+
+    // // Must have last selected wallet set
+    // const lastSelectedWallet = WalletConnectionApi.getLastConnectedWallet();
+    // if (!lastSelectedWallet) {
+    //   console.log('tryToAutoReconnect: No lastSelectedWallet');
+    //   return;
+    // }
+
+    // // Initialize onboard if needed
+    // const onboard = this.getOnboard();
+
+    // // Attempt to connect
+    // try {
+    //   await this.waitForInjectedWallet();
+    //   this.ignoreDisconnectFromAutoConnect = true;
+    //   await WalletConnectionApi.connect(onboard, {
+    //     autoSelect: { label: lastSelectedWallet, disableModals: true },
+    //   });
+    // } catch (err) {
+    //   // We clear last connected wallet here so that attempting to reconnect opens the modal
+    //   // rather than trying to reconnect to previous wallet that just failed/was rejected.
+    //   WalletConnectionApi.setLastConnectedWallet(undefined);
+    //   // Rethrow so called knows connection failed
+    //   throw err;
+    // } finally {
+    //   this.ignoreDisconnectFromAutoConnect = false;
+    // }
   }
 
   private async waitForInjectedWallet(): Promise<boolean> {
