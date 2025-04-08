@@ -18,6 +18,9 @@ import { AppVersionCheck } from './components/AppVersionCheck/AppVersionCheck.ts
 import { Tenderly } from './components/Tenderly/Tenderly.tsx';
 import { BreakpointProvider } from './components/MediaQueries/BreakpointProvider.tsx';
 
+import { getTransactApi } from './features/data/apis/instances.ts';
+import BigNumber from 'bignumber.js';
+
 const HomePage = lazy(() => import('./features/home/HomePage.tsx'));
 const VaultPage = lazy(() => import('./features/vault/VaultPage.tsx'));
 const OnRampPage = lazy(() => import('./features/on-ramp/OnRampPage.tsx'));
@@ -37,9 +40,48 @@ const Boundaries = memo(function Boundaries({ children }: BoundariesProps) {
   );
 });
 
+async function generateDepositPayload(vaultId: string, inputAmount: string) {
+  const state = store.getState();
+  console.log({ state, vaults: state.entities.vaults });
+  const api = await getTransactApi();
+
+  // Fetch available deposit options for the vault
+  const options = await api.fetchDepositOptionsFor(vaultId, () => state);
+  console.log({ options });
+  const option = options.find((o) => o.inputs[0].id === 'USDC')!; // picking the option to deposit with USDC
+  console.debug({ option });
+
+  const inputToken = option.inputs[0]; // usually the primary deposit token
+
+  // Generate quote for the deposit amount
+  const quotes = await api.fetchDepositQuotesFor(
+    [option],
+    [{ token: inputToken, amount: new BigNumber(inputAmount), max: false }],
+    () => state
+  );
+  console.log({ quotes });
+
+  const quote = quotes[0]; // pick randomly the first quote
+  console.debug({ quote });
+
+  // Get the transaction step
+  const step = await api.fetchDepositStep(quote, () => state, () => '');
+  console.debug({ step });
+
+   // Dispatch the thunk action to retrieve the actual payload
+  const result = await store.dispatch(step.action);
+
+  console.log('Deposit Payload:', result);
+}
+
 export const App = memo(function App() {
   useEffect(() => {
-    void initAppData(store);
+    async function initializeAndGeneratePayload() {
+      await initAppData(store); // Wait until initialization finishes
+      await generateDepositPayload('aura-arb-susde-gyd', '0.1');
+    }
+
+    void initializeAndGeneratePayload();
   }, []);
 
   return (

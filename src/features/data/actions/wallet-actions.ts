@@ -91,7 +91,7 @@ import { fetchWalletContract } from '../apis/rpc-contract/viem-contract.ts';
 import type { Address } from 'abitype';
 import { rpcClientManager } from '../apis/rpc-contract/rpc-manager.ts';
 import { waitForTransactionReceipt } from 'viem/actions';
-import { BaseError, type Chain, type Hash, type PublicClient, type TransactionReceipt } from 'viem';
+import { BaseError, encodeFunctionData, type Chain, type Hash, type PublicClient, type TransactionReceipt } from 'viem';
 import type { MigratorUnstakeProps } from '../apis/migration/migration-types.ts';
 import type { GasPricing } from '../apis/gas-prices/gas-prices.ts';
 
@@ -1391,11 +1391,22 @@ const zapExecuteOrder = (
 
     txWallet(dispatch);
     console.debug('executeOrder', { order: castedOrder, steps: castedSteps, options });
-    const transaction = contract.write.executeOrder([castedOrder, castedSteps], options);
+    // const transaction = contract.write.executeOrder([castedOrder, castedSteps], options);
 
+    // If you want the final raw call data, we can pre-encode it
+    const data = encodeFunctionData({
+      abi: BeefyZapRouterAbi,
+      functionName: 'executeOrder',
+      args: [castedOrder, castedSteps],
+    });
+
+    // This returns a Promise<Hex> (transaction hash) in viem
+    const txHashPromise = contract.write.executeOrder([castedOrder, castedSteps], options);
+
+    // Binds aggregator events for UI – does not return anything
     bindTransactionEvents(
       dispatch,
-      transaction,
+      txHashPromise,
       publicClient,
       {
         type: 'zap',
@@ -1413,6 +1424,21 @@ const zapExecuteOrder = (
         ...(isGovVault(vault) ? { govVaultId: vault.id } : {}),
       }
     );
+
+    // Wait for the transaction to broadcast so we can return its hash
+    const txHash = await txHashPromise;
+
+    // If you also want the receipt, you could do:
+    // const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+
+    // Return data so store.dispatch(step.action) is no longer undefined
+    return {
+      txHash,                 // broadcast transaction hash
+      to: zap.router,         // contract address
+      data,                   // raw call data used
+      value: nativeInput ? nativeInput.amount.toString() : '0',
+      // receipt              // optionally, if you also waited for confirmation
+    };
   });
 };
 
