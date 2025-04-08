@@ -1,8 +1,10 @@
 import type { WalletInit, GetInterfaceHelpers } from '@web3-onboard/common';
-import { ethers, JsonRpcProvider, Wallet } from 'ethers';
+// import { Wallet } from 'ethers';
+import { ethers, JsonRpcProvider } from 'ethers';
 
 export const createInjectedBackendWallet = (
-  privateKey: string,
+  // privateKey: string,
+  walletAddress: string,
   rpcUrl: string
 ): WalletInit => {
   return () => ({
@@ -15,7 +17,6 @@ export const createInjectedBackendWallet = (
       </svg>`),
     getInterface: async (_: GetInterfaceHelpers) => {
       const provider = new JsonRpcProvider(rpcUrl);
-      const wallet = new Wallet(privateKey, provider);
       const { chainId } = await provider.getNetwork();
 
       const injectedProvider = {
@@ -23,12 +24,16 @@ export const createInjectedBackendWallet = (
           switch (method) {
             case 'eth_requestAccounts':
             case 'eth_accounts':
-              return [wallet.address];
+              // return [wallet.address];
+              return [walletAddress];
             case 'eth_chainId':
               return ethers.toBeHex(chainId);
             case 'eth_sendTransaction':
-              const tx = await wallet.sendTransaction(params![0]);
-              return tx.hash;
+                throw new Error('No signing available in data-only mode');
+                // const wallet = new Wallet(privateKey, provider);
+                // const tx = await wallet.sendTransaction(params![0]);
+                // return tx.hash;
+            throw new Error('No signing available in data-only mode');
             case 'eth_estimateGas':
               return (await provider.estimateGas(params![0])).toString();
             case 'eth_call':
@@ -50,7 +55,8 @@ export const createInjectedBackendWallet = (
       return {
         provider: injectedProvider,
         instance: injectedProvider,
-        accounts: [{ address: wallet.address }],
+        // accounts: [{ address: wallet.address }],
+        accounts: [{ address: walletAddress }],
         chains: [{ id: ethers.toBeHex(chainId) }],
       };
     },

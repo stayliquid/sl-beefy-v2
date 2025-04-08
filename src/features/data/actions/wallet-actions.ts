@@ -1326,11 +1326,17 @@ const zapExecuteOrder = (
     if (!zap) {
       throw new Error(`No zap found for chain ${chain.id}`);
     }
+
+    // Are we in data-only mode? If your custom wallet has no private key,
+    // set a flag. For example, use an env var like VITE_DATA_ONLY=true
+    const isDataOnly = import.meta.env.VITE_DATA_ONLY === 'true';
+
     const depositToken = selectTokenByAddress(state, vault.chainId, vault.depositTokenAddress);
 
+    // Filter zero-amount inputs, set user=address
     const order: ZapOrder = {
       ...params.order,
-      inputs: params.order.inputs.filter(i => BIG_ZERO.lt(i.amount)), // remove <= zero amounts
+      inputs: params.order.inputs.filter(i => BIG_ZERO.lt(i.amount)),
       user: address,
       recipient: address,
     };
@@ -1338,34 +1344,31 @@ const zapExecuteOrder = (
       throw new Error('No inputs provided');
     }
 
-    // @dev key order must match actual function / `components` in ABI
+    // Convert userless request -> contract shape
     const castedOrder = {
-      inputs: params.order.inputs
-        .filter(i => BIG_ZERO.lt(i.amount))
-        .map(i => ({
-          token: i.token as Address,
-          amount: BigInt(i.amount),
-        })), // remove <= zero amounts
-      outputs: params.order.outputs.map(o => ({
+      inputs: order.inputs.map(i => ({
+        token: i.token as Address,
+        amount: BigInt(i.amount),
+      })),
+      outputs: order.outputs.map(o => ({
         token: o.token as Address,
         minOutputAmount: BigInt(o.minOutputAmount),
       })),
       relay: {
-        target: params.order.relay.target as Address,
-        value: BigInt(params.order.relay.value),
-        data: params.order.relay.data as `0x${string}`,
+        target: order.relay.target as Address,
+        value: BigInt(order.relay.value),
+        data: order.relay.data as `0x${string}`,
       },
       user: address as Address,
       recipient: address as Address,
     };
 
+    // Convert steps
     const steps: ZapStep[] = params.steps;
     if (!steps.length) {
       throw new Error('No steps provided');
     }
-
-    // @dev key order must match actual function / `components` in ABI
-    const castedSteps = params.steps.map(step => ({
+    const castedSteps = steps.map(step => ({
       target: step.target as Address,
       value: BigInt(step.value),
       data: step.data as `0x${string}`,
@@ -1375,6 +1378,7 @@ const zapExecuteOrder = (
       })),
     }));
 
+    // Prepare contract
     const walletApi = await getWalletConnectionApi();
     const publicClient = rpcClientManager.getBatchClient(vault.chainId);
     const walletClient = await walletApi.getConnectedViemClient();
@@ -1382,28 +1386,43 @@ const zapExecuteOrder = (
     const nativeInput = castedOrder.inputs.find(input => input.token === ZERO_ADDRESS);
 
     const contract = fetchWalletContract(zap.router, BeefyZapRouterAbi, walletClient);
-    const options = {
-      ...gasPrices,
-      account: castedOrder.user,
-      chain: publicClient.chain,
-      value: nativeInput ? nativeInput.amount : undefined,
-    };
 
-    txWallet(dispatch);
-    console.debug('executeOrder', { order: castedOrder, steps: castedSteps, options });
-    // const transaction = contract.write.executeOrder([castedOrder, castedSteps], options);
-
-    // If you want the final raw call data, we can pre-encode it
+    // Always generate raw data
     const data = encodeFunctionData({
       abi: BeefyZapRouterAbi,
       functionName: 'executeOrder',
       args: [castedOrder, castedSteps],
     });
 
-    // This returns a Promise<Hex> (transaction hash) in viem
-    const txHashPromise = contract.write.executeOrder([castedOrder, castedSteps], options);
+    // Build viem tx options
+    // If we do NOT have a private key, we skip `account` entirely => no signing
+    const txOptions: any = {
+      ...gasPrices,
+      chain: publicClient.chain,
+      value: nativeInput ? nativeInput.amount : undefined,
+    };
 
-    // Binds aggregator events for UI – does not return anything
+    console.debug('executeOrder', { castedOrder, castedSteps, txOptions, data, isDataOnly });
+
+    txWallet(dispatch);
+
+    // *** Data-Only Mode => skip broadcast ***
+    if (isDataOnly) {
+      // Return raw payload, do not call contract.write
+      return {
+        txHash: null,
+        to: zap.router,
+        data,
+        value: nativeInput ? nativeInput.amount.toString() : '0',
+        note: 'Data-only mode => no broadcast performed',
+      };
+    }
+
+    // *** Normal Broadcast => sign + send
+    txOptions.account = castedOrder.user; // triggers signing
+    const txHashPromise = contract.write.executeOrder([castedOrder, castedSteps], txOptions);
+
+    // Bind aggregator events
     bindTransactionEvents(
       dispatch,
       txHashPromise,
@@ -1425,19 +1444,13 @@ const zapExecuteOrder = (
       }
     );
 
-    // Wait for the transaction to broadcast so we can return its hash
     const txHash = await txHashPromise;
 
-    // If you also want the receipt, you could do:
-    // const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-
-    // Return data so store.dispatch(step.action) is no longer undefined
     return {
-      txHash,                 // broadcast transaction hash
-      to: zap.router,         // contract address
-      data,                   // raw call data used
+      txHash,
+      to: zap.router,
+      data,
       value: nativeInput ? nativeInput.amount.toString() : '0',
-      // receipt              // optionally, if you also waited for confirmation
     };
   });
 };

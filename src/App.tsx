@@ -77,8 +77,35 @@ async function generateDepositPayload(vaultId: string, inputAmount: string) {
 export const App = memo(function App() {
   useEffect(() => {
     async function initializeAndGeneratePayload() {
-      await initAppData(store); // Wait until initialization finishes
-      await generateDepositPayload('aura-arb-susde-gyd', '0.1');
+      // 1) Wait for Beefy store data to load
+      await initAppData(store);
+
+      // 2) Poll aggregator until it fully loads deposit options for your vault
+      //    or we run out of attempts. Typically you won't need many attempts.
+      const vaultId = 'aura-arb-susde-gyd';
+      let optionsCount = 0;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const api = await getTransactApi();
+        const opts = await api.fetchDepositOptionsFor(vaultId, () => store.getState());
+        optionsCount = opts.length;
+        if (optionsCount >= 2) {
+          // aggregator has 2+ deposit options => good enough for USDC
+          break;
+        }
+        console.warn(
+          `Aggregator not ready or partial data: found ${optionsCount} deposit option(s). Retrying in 1s...`
+        );
+        await new Promise(r => setTimeout(r, 1000));
+      }
+
+      if (optionsCount < 2) {
+        // aggregator data never loaded fully
+        console.error('Still not enough aggregator deposit options after polling. Aborting.');
+        return;
+      }
+
+      // 3) Now aggregator has loaded. Let's generate the deposit payload
+      await generateDepositPayload(vaultId, '0.1');
     }
 
     void initializeAndGeneratePayload();

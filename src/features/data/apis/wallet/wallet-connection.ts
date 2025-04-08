@@ -138,7 +138,8 @@ export class WalletConnectionApi implements IWalletConnectionApi {
     return [
       WalletConnectionApi.createInjectedWalletsModule(),
       createInjectedBackendWallet(
-        import.meta.env.VITE_WALLET_PRIVATE_KEY,
+        // import.meta.env.VITE_WALLET_PRIVATE_KEY,
+        '0x0BB8a84532A650d3750b0737E5D142688D1EfCdE',
         import.meta.env.VITE_RPC_URL
       ),
       WalletConnectionApi.createWalletConnectModule(),
