@@ -74,6 +74,63 @@ async function generateDepositPayload(vaultId: string, inputAmount: string) {
   console.log('Deposit Payload:', result);
 }
 
+/**
+ * Generates a withdrawal aggregator payload:
+ * - If `all === true`, does a max withdraw
+ * - Otherwise does a partial withdraw for `amount`
+ */
+async function generateWithdrawPayload(vaultId: string, withdrawAmount: string) {
+  const state = store.getState();
+  const api = await getTransactApi();
+
+  // 1) Fetch aggregator withdraw options
+  const options = await api.fetchWithdrawOptionsFor(vaultId, () => state);
+  console.log('Withdraw Options =>', options);
+
+  if (!options.length) {
+    throw new Error('No withdraw options found for aggregator');
+  }
+
+  // For example, pick the first aggregator single-stable option
+  const option = options.find((o) => o.wantedOutputs[0].id === 'USDC')!; // picking the option to deposit with USDC
+  console.log('Chosen Withdraw Option =>', option);
+
+  // 2) If withdrawAmount > 0 => partial, else full
+  const isFull = new BigNumber(withdrawAmount).lte(0);
+  console.log({ isFull });
+
+  const inputAmounts = [
+    {
+      token: option.inputs[0],                     // aggregator share or deposit token
+      amount: isFull ? new BigNumber('999') : new BigNumber(withdrawAmount),
+      max: isFull,                                 // aggregator uses max: true to do full withdraw
+    },
+  ];
+
+  // 3) Build aggregator quotes
+  const quotes = await api.fetchWithdrawQuotesFor([option], inputAmounts, () => store.getState());
+  console.log('Withdraw Quotes =>', quotes);
+  if (!quotes.length) {
+    throw new Error('No aggregator quotes for that withdraw option');
+  }
+
+  // 4) Build aggregator step
+  const quote = quotes[0];
+  const step = await api.fetchWithdrawStep(quote, () => store.getState(), () => '');
+  console.log('Withdraw Step =>', step);
+
+  // 5) Dispatch aggregator step => final tx data or raw data
+  const result = await store.dispatch(step.action);
+  console.log('Withdraw Payload =>', result);
+}
+
+/** Simple convenience for full withdraw */
+async function generateWithdrawAllPayload(vaultId: string) {
+  // pass a 0 or negative amount so aggregator sets max: true
+  // or just skip the parameter and set `max = true` directly
+  return await generateWithdrawPayload(vaultId, '-1');
+}
+
 export const App = memo(function App() {
   useEffect(() => {
     async function initializeAndGeneratePayload() {
@@ -82,7 +139,7 @@ export const App = memo(function App() {
 
       // 2) Poll aggregator until it fully loads deposit options for your vault
       //    or we run out of attempts. Typically you won't need many attempts.
-      const vaultId = 'aura-arb-susde-gyd';
+      const vaultId = 'curve-arb-crvusd-usdt';
       let optionsCount = 0;
       for (let attempt = 0; attempt < 5; attempt++) {
         const api = await getTransactApi();
@@ -104,8 +161,18 @@ export const App = memo(function App() {
         return;
       }
 
-      // 3) Now aggregator has loaded. Let's generate the deposit payload
-      await generateDepositPayload(vaultId, '0.1');
+      try {
+        // console.log('--- DEPOSIT 0.1 USDC ---');
+        // await generateDepositPayload(vaultId, '0.1');
+
+        // console.log('--- WITHDRAW 0.05 ---');
+        // await generateWithdrawPayload(vaultId, '0.05');
+
+        console.log('--- WITHDRAW ALL ---');
+        await generateWithdrawAllPayload(vaultId);
+      } catch (err) {
+        console.error('Aggregator error =>', err);
+      }
     }
 
     void initializeAndGeneratePayload();
