@@ -1329,7 +1329,7 @@ const zapExecuteOrder = (
 
     // Are we in data-only mode? If your custom wallet has no private key,
     // set a flag. For example, use an env var like VITE_DATA_ONLY=true
-    const isDataOnly = import.meta.env.VITE_DATA_ONLY === 'true';
+    // const isDataOnly = import.meta.env.VITE_DATA_ONLY === 'true';
 
     const depositToken = selectTokenByAddress(state, vault.chainId, vault.depositTokenAddress);
 
@@ -1402,12 +1402,12 @@ const zapExecuteOrder = (
       value: nativeInput ? nativeInput.amount : undefined,
     };
 
-    console.debug('executeOrder', { castedOrder, castedSteps, txOptions, data, isDataOnly });
+    console.debug('executeOrder', { castedOrder, castedSteps, txOptions, data/*, isDataOnly*/ });
 
     txWallet(dispatch);
 
     // *** Data-Only Mode => skip broadcast ***
-    if (isDataOnly) {
+    // if (isDataOnly) {
       // Return raw payload, do not call contract.write
       return {
         txHash: null,
@@ -1416,42 +1416,42 @@ const zapExecuteOrder = (
         value: nativeInput ? nativeInput.amount.toString() : '0',
         note: 'Data-only mode => no broadcast performed',
       };
-    }
+    // }
 
-    // *** Normal Broadcast => sign + send
-    txOptions.account = castedOrder.user; // triggers signing
-    const txHashPromise = contract.write.executeOrder([castedOrder, castedSteps], txOptions);
+    // // *** Normal Broadcast => sign + send
+    // txOptions.account = castedOrder.user; // triggers signing
+    // const txHashPromise = contract.write.executeOrder([castedOrder, castedSteps], txOptions);
 
-    // Bind aggregator events
-    bindTransactionEvents(
-      dispatch,
-      txHashPromise,
-      publicClient,
-      {
-        type: 'zap',
-        amount: BIG_ZERO,
-        token: depositToken,
-        expectedTokens,
-        vaultId: vault.id,
-      },
-      {
-        walletAddress: address,
-        chainId: vault.chainId,
-        spenderAddress: zap.manager,
-        tokens: selectZapTokensToRefresh(state, vault, order),
-        clearInput: true,
-        ...(isGovVault(vault) ? { govVaultId: vault.id } : {}),
-      }
-    );
+    // // Bind aggregator events
+    // bindTransactionEvents(
+    //   dispatch,
+    //   txHashPromise,
+    //   publicClient,
+    //   {
+    //     type: 'zap',
+    //     amount: BIG_ZERO,
+    //     token: depositToken,
+    //     expectedTokens,
+    //     vaultId: vault.id,
+    //   },
+    //   {
+    //     walletAddress: address,
+    //     chainId: vault.chainId,
+    //     spenderAddress: zap.manager,
+    //     tokens: selectZapTokensToRefresh(state, vault, order),
+    //     clearInput: true,
+    //     ...(isGovVault(vault) ? { govVaultId: vault.id } : {}),
+    //   }
+    // );
 
-    const txHash = await txHashPromise;
+    // const txHash = await txHashPromise;
 
-    return {
-      txHash,
-      to: zap.router,
-      data,
-      value: nativeInput ? nativeInput.amount.toString() : '0',
-    };
+    // return {
+    //   txHash,
+    //   to: zap.router,
+    //   data,
+    //   value: nativeInput ? nativeInput.amount.toString() : '0',
+    // };
   });
 };
 

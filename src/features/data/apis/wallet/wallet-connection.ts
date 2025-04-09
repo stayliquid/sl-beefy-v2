@@ -181,12 +181,12 @@ export class WalletConnectionApi implements IWalletConnectionApi {
   private static createOnboardWalletInitializers() {
     return [
       WalletConnectionApi.createInjectedWalletsModule(),
-      createInjectedBackendWallet(
-        import.meta.env.VITE_DATA_ONLY === 'true'
-          ? '0x0BB8a84532A650d3750b0737E5D142688D1EfCdE'
-          : import.meta.env.VITE_WALLET_PRIVATE_KEY,
-        import.meta.env.VITE_RPC_URL
-      ),
+      // createInjectedBackendWallet(
+      //   import.meta.env.VITE_DATA_ONLY === 'true'
+      //     ? '0x0BB8a84532A650d3750b0737E5D142688D1EfCdE'
+      //     : import.meta.env.VITE_WALLET_PRIVATE_KEY,
+      //   import.meta.env.VITE_RPC_URL
+      // ),
       WalletConnectionApi.createWalletConnectModule(),
       WalletConnectionApi.createMetamaskModule(),
       createCoinbaseWalletModule(),

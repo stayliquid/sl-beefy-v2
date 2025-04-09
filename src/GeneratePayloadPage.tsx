@@ -4,6 +4,8 @@ import BigNumber from 'bignumber.js';
 import { store } from './store.ts';
 import { getTransactApi, getWalletConnectionApi } from './features/data/apis/instances.ts';
 import { initAppData } from './features/data/actions/scenarios.ts';
+import type { ChainId } from './features/data/entities/chain.ts';
+import { config } from './config/config.ts';
 
 async function generateDepositPayload(vaultId: string, inputAmount: string) {
   const state = store.getState();
@@ -83,6 +85,9 @@ export function GeneratePayloadPage() {
         const type = searchParams.get('type'); // 'deposit' or 'withdraw'
         const rawAmount = searchParams.get('amount') || 'all';
         const userWallet = searchParams.get('wallet'); // optional
+        const chain: ChainId = searchParams.get('chain'); // optional
+
+        const rpcUrl = chain ? config[chain].rpc[0] : config.arbitrum.rpc[0];
 
         if (!vaultId || !type) {
           throw new Error('Missing vaultId or type=? (deposit/withdraw)');
@@ -97,7 +102,7 @@ export function GeneratePayloadPage() {
         // 3) If user address is provided, re-inject
         if (userWallet) {
           const walletApi = await getWalletConnectionApi();
-          await walletApi.reInjectBackendWallet(userWallet, 'https://arb1.arbitrum.io/rpc');
+          await walletApi.reInjectBackendWallet(userWallet, rpcUrl);
         }
 
         // 4) Poll aggregator readiness for deposit options
