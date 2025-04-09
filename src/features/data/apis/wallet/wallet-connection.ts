@@ -181,12 +181,6 @@ export class WalletConnectionApi implements IWalletConnectionApi {
   private static createOnboardWalletInitializers() {
     return [
       WalletConnectionApi.createInjectedWalletsModule(),
-      // createInjectedBackendWallet(
-      //   import.meta.env.VITE_DATA_ONLY === 'true'
-      //     ? '0x0BB8a84532A650d3750b0737E5D142688D1EfCdE'
-      //     : import.meta.env.VITE_WALLET_PRIVATE_KEY,
-      //   import.meta.env.VITE_RPC_URL
-      // ),
       WalletConnectionApi.createWalletConnectModule(),
       WalletConnectionApi.createMetamaskModule(),
       createCoinbaseWalletModule(),
@@ -417,33 +411,6 @@ export class WalletConnectionApi implements IWalletConnectionApi {
       console.error('Auto reconnect failed:', err);
       throw err;
     }
-
-    // // Must have last selected wallet set
-    // const lastSelectedWallet = WalletConnectionApi.getLastConnectedWallet();
-    // if (!lastSelectedWallet) {
-    //   console.log('tryToAutoReconnect: No lastSelectedWallet');
-    //   return;
-    // }
-
-    // // Initialize onboard if needed
-    // const onboard = this.getOnboard();
-
-    // // Attempt to connect
-    // try {
-    //   await this.waitForInjectedWallet();
-    //   this.ignoreDisconnectFromAutoConnect = true;
-    //   await WalletConnectionApi.connect(onboard, {
-    //     autoSelect: { label: lastSelectedWallet, disableModals: true },
-    //   });
-    // } catch (err) {
-    //   // We clear last connected wallet here so that attempting to reconnect opens the modal
-    //   // rather than trying to reconnect to previous wallet that just failed/was rejected.
-    //   WalletConnectionApi.setLastConnectedWallet(undefined);
-    //   // Rethrow so called knows connection failed
-    //   throw err;
-    // } finally {
-    //   this.ignoreDisconnectFromAutoConnect = false;
-    // }
   }
 
   private async waitForInjectedWallet(): Promise<boolean> {

@@ -91,7 +91,8 @@ import { fetchWalletContract } from '../apis/rpc-contract/viem-contract.ts';
 import type { Address } from 'abitype';
 import { rpcClientManager } from '../apis/rpc-contract/rpc-manager.ts';
 import { waitForTransactionReceipt } from 'viem/actions';
-import { BaseError, encodeFunctionData, type Chain, type Hash, type PublicClient, type TransactionReceipt } from 'viem';
+import { BaseError, type Chain, type Hash, type PublicClient, type TransactionReceipt } from 'viem';
+import { encodeFunctionData } from 'viem';
 import type { MigratorUnstakeProps } from '../apis/migration/migration-types.ts';
 import type { GasPricing } from '../apis/gas-prices/gas-prices.ts';
 
@@ -1327,16 +1328,11 @@ const zapExecuteOrder = (
       throw new Error(`No zap found for chain ${chain.id}`);
     }
 
-    // Are we in data-only mode? If your custom wallet has no private key,
-    // set a flag. For example, use an env var like VITE_DATA_ONLY=true
-    // const isDataOnly = import.meta.env.VITE_DATA_ONLY === 'true';
-
     const depositToken = selectTokenByAddress(state, vault.chainId, vault.depositTokenAddress);
 
-    // Filter zero-amount inputs, set user=address
     const order: ZapOrder = {
       ...params.order,
-      inputs: params.order.inputs.filter(i => BIG_ZERO.lt(i.amount)),
+      inputs: params.order.inputs.filter(i => BIG_ZERO.lt(i.amount)), // remove <= zero amounts
       user: address,
       recipient: address,
     };
@@ -1344,7 +1340,7 @@ const zapExecuteOrder = (
       throw new Error('No inputs provided');
     }
 
-    // Convert userless request -> contract shape
+    // @dev key order must match actual function / `components` in ABI
     const castedOrder = {
       inputs: order.inputs.map(i => ({
         token: i.token as Address,
@@ -1363,7 +1359,6 @@ const zapExecuteOrder = (
       recipient: address as Address,
     };
 
-    // Convert steps
     const steps: ZapStep[] = params.steps;
     if (!steps.length) {
       throw new Error('No steps provided');
@@ -1378,7 +1373,6 @@ const zapExecuteOrder = (
       })),
     }));
 
-    // Prepare contract
     const walletApi = await getWalletConnectionApi();
     const publicClient = rpcClientManager.getBatchClient(vault.chainId);
     const walletClient = await walletApi.getConnectedViemClient();
@@ -1402,56 +1396,17 @@ const zapExecuteOrder = (
       value: nativeInput ? nativeInput.amount : undefined,
     };
 
-    console.debug('executeOrder', { castedOrder, castedSteps, txOptions, data/*, isDataOnly*/ });
+    console.debug('executeOrder', { castedOrder, castedSteps, txOptions, data });
 
     txWallet(dispatch);
 
-    // *** Data-Only Mode => skip broadcast ***
-    // if (isDataOnly) {
-      // Return raw payload, do not call contract.write
-      return {
-        txHash: null,
-        to: zap.router,
-        data,
-        value: nativeInput ? nativeInput.amount.toString() : '0',
-        note: 'Data-only mode => no broadcast performed',
-      };
-    // }
-
-    // // *** Normal Broadcast => sign + send
-    // txOptions.account = castedOrder.user; // triggers signing
-    // const txHashPromise = contract.write.executeOrder([castedOrder, castedSteps], txOptions);
-
-    // // Bind aggregator events
-    // bindTransactionEvents(
-    //   dispatch,
-    //   txHashPromise,
-    //   publicClient,
-    //   {
-    //     type: 'zap',
-    //     amount: BIG_ZERO,
-    //     token: depositToken,
-    //     expectedTokens,
-    //     vaultId: vault.id,
-    //   },
-    //   {
-    //     walletAddress: address,
-    //     chainId: vault.chainId,
-    //     spenderAddress: zap.manager,
-    //     tokens: selectZapTokensToRefresh(state, vault, order),
-    //     clearInput: true,
-    //     ...(isGovVault(vault) ? { govVaultId: vault.id } : {}),
-    //   }
-    // );
-
-    // const txHash = await txHashPromise;
-
-    // return {
-    //   txHash,
-    //   to: zap.router,
-    //   data,
-    //   value: nativeInput ? nativeInput.amount.toString() : '0',
-    // };
+    return {
+      txHash: null,
+      to: zap.router,
+      data,
+      value: nativeInput ? nativeInput.amount.toString() : '0',
+      note: 'Data-only mode => no broadcast performed',
+    };
   });
 };
 
