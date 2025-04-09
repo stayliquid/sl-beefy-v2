@@ -92,6 +92,7 @@ import type { Address } from 'abitype';
 import { rpcClientManager } from '../apis/rpc-contract/rpc-manager.ts';
 import { waitForTransactionReceipt } from 'viem/actions';
 import { BaseError, type Chain, type Hash, type PublicClient, type TransactionReceipt } from 'viem';
+import { encodeFunctionData } from 'viem';
 import type { MigratorUnstakeProps } from '../apis/migration/migration-types.ts';
 import type { GasPricing } from '../apis/gas-prices/gas-prices.ts';
 
@@ -1326,6 +1327,7 @@ const zapExecuteOrder = (
     if (!zap) {
       throw new Error(`No zap found for chain ${chain.id}`);
     }
+
     const depositToken = selectTokenByAddress(state, vault.chainId, vault.depositTokenAddress);
 
     const order: ZapOrder = {
@@ -1340,20 +1342,18 @@ const zapExecuteOrder = (
 
     // @dev key order must match actual function / `components` in ABI
     const castedOrder = {
-      inputs: params.order.inputs
-        .filter(i => BIG_ZERO.lt(i.amount))
-        .map(i => ({
-          token: i.token as Address,
-          amount: BigInt(i.amount),
-        })), // remove <= zero amounts
-      outputs: params.order.outputs.map(o => ({
+      inputs: order.inputs.map(i => ({
+        token: i.token as Address,
+        amount: BigInt(i.amount),
+      })), // remove <= zero amounts
+      outputs: order.outputs.map(o => ({
         token: o.token as Address,
         minOutputAmount: BigInt(o.minOutputAmount),
       })),
       relay: {
-        target: params.order.relay.target as Address,
-        value: BigInt(params.order.relay.value),
-        data: params.order.relay.data as `0x${string}`,
+        target: order.relay.target as Address,
+        value: BigInt(order.relay.value),
+        data: order.relay.data as `0x${string}`,
       },
       user: address as Address,
       recipient: address as Address,
@@ -1365,7 +1365,7 @@ const zapExecuteOrder = (
     }
 
     // @dev key order must match actual function / `components` in ABI
-    const castedSteps = params.steps.map(step => ({
+    const castedSteps = steps.map(step => ({
       target: step.target as Address,
       value: BigInt(step.value),
       data: step.data as `0x${string}`,
@@ -1382,37 +1382,33 @@ const zapExecuteOrder = (
     const nativeInput = castedOrder.inputs.find(input => input.token === ZERO_ADDRESS);
 
     const contract = fetchWalletContract(zap.router, BeefyZapRouterAbi, walletClient);
-    const options = {
+
+    // Always generate raw data
+    const data = encodeFunctionData({
+      abi: BeefyZapRouterAbi,
+      functionName: 'executeOrder',
+      args: [castedOrder, castedSteps],
+    });
+
+    // Build viem tx options
+    // If we do NOT have a private key, we skip `account` entirely => no signing
+    const txOptions: any = {
       ...gasPrices,
-      account: castedOrder.user,
       chain: publicClient.chain,
       value: nativeInput ? nativeInput.amount : undefined,
     };
 
-    txWallet(dispatch);
-    console.debug('executeOrder', { order: castedOrder, steps: castedSteps, options });
-    const transaction = contract.write.executeOrder([castedOrder, castedSteps], options);
+    console.debug('executeOrder', { castedOrder, castedSteps, txOptions, data });
 
-    bindTransactionEvents(
-      dispatch,
-      transaction,
-      publicClient,
-      {
-        type: 'zap',
-        amount: BIG_ZERO,
-        token: depositToken,
-        expectedTokens,
-        vaultId: vault.id,
-      },
-      {
-        walletAddress: address,
-        chainId: vault.chainId,
-        spenderAddress: zap.manager,
-        tokens: selectZapTokensToRefresh(state, vault, order),
-        clearInput: true,
-        ...(isGovVault(vault) ? { govVaultId: vault.id } : {}),
-      }
-    );
+    txWallet(dispatch);
+
+    return {
+      txHash: null,
+      to: zap.router,
+      data,
+      value: nativeInput ? nativeInput.amount.toString() : '0',
+      note: 'Data-only mode => no broadcast performed',
+    };
   });
 };
 

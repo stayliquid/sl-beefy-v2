@@ -18,6 +18,9 @@ import { AppVersionCheck } from './components/AppVersionCheck/AppVersionCheck.ts
 import { Tenderly } from './components/Tenderly/Tenderly.tsx';
 import { BreakpointProvider } from './components/MediaQueries/BreakpointProvider.tsx';
 
+import { getTransactApi } from './features/data/apis/instances.ts';
+import { GeneratePayloadPage } from './GeneratePayloadPage.tsx';
+
 const HomePage = lazy(() => import('./features/home/HomePage.tsx'));
 const VaultPage = lazy(() => import('./features/vault/VaultPage.tsx'));
 const OnRampPage = lazy(() => import('./features/on-ramp/OnRampPage.tsx'));
@@ -39,7 +42,49 @@ const Boundaries = memo(function Boundaries({ children }: BoundariesProps) {
 
 export const App = memo(function App() {
   useEffect(() => {
-    void initAppData(store);
+    async function initializeAndGeneratePayload() {
+      // 1) Wait for Beefy store data to load
+      await initAppData(store);
+
+      // 2) Poll aggregator until it fully loads deposit options for your vault
+      //    or we run out of attempts. Typically you won't need many attempts.
+      const vaultId = 'curve-arb-crvusd-usdt';
+      let optionsCount = 0;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const api = await getTransactApi();
+        const opts = await api.fetchDepositOptionsFor(vaultId, () => store.getState());
+        optionsCount = opts.length;
+        if (optionsCount >= 2) {
+          // aggregator has 2+ deposit options => good enough for USDC
+          break;
+        }
+        console.warn(
+          `Aggregator not ready or partial data: found ${optionsCount} deposit option(s). Retrying in 1s...`
+        );
+        await new Promise(r => setTimeout(r, 1000));
+      }
+
+      if (optionsCount < 2) {
+        // aggregator data never loaded fully
+        console.error('Still not enough aggregator deposit options after polling. Aborting.');
+        return;
+      }
+
+      try {
+        // console.log('--- DEPOSIT 0.1 USDC ---');
+        // await generateDepositPayload(vaultId, '0.1');
+
+        // console.log('--- WITHDRAW 0.05 ---');
+        // await generateWithdrawPayload(vaultId, '0.05');
+
+        console.log('--- WITHDRAW ALL ---');
+        await generateWithdrawAllPayload(vaultId);
+      } catch (err) {
+        console.error('Aggregator error =>', err);
+      }
+    }
+
+    void initializeAndGeneratePayload();
   }, []);
 
   return (
@@ -114,6 +159,12 @@ export const App = memo(function App() {
                   <Boundaries>
                     <TreasuryPage />
                   </Boundaries>
+                }
+              />
+              <Route
+                path="/generate-payload"
+                element={
+                    <GeneratePayloadPage />
                 }
               />
               <Route
