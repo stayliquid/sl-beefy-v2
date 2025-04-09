@@ -58,9 +58,6 @@ export class WalletConnectionApi implements IWalletConnectionApi {
     // 2) Force a rebuild of our “Onboard” with new createInjectedBackendWallet
     //    by changing the onboardWalletInitializers or re-storing them
     this.onboardWalletInitializers = [
-      // add your custom injected wallet, plus any other modules you normally do
-      // createInjectedWallets({ custom: customInjectedWallets, disable6963Support: false }),
-      // createInjectedBackendWallet(newAddress, rpcUrl),
       WalletConnectionApi.createInjectedWalletsModule(),
       createInjectedBackendWallet(newAddress, rpcUrl),
       WalletConnectionApi.createWalletConnectModule(),

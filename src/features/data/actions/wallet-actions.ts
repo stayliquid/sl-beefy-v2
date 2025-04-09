@@ -1345,7 +1345,7 @@ const zapExecuteOrder = (
       inputs: order.inputs.map(i => ({
         token: i.token as Address,
         amount: BigInt(i.amount),
-      })),
+      })), // remove <= zero amounts
       outputs: order.outputs.map(o => ({
         token: o.token as Address,
         minOutputAmount: BigInt(o.minOutputAmount),
@@ -1363,6 +1363,8 @@ const zapExecuteOrder = (
     if (!steps.length) {
       throw new Error('No steps provided');
     }
+
+    // @dev key order must match actual function / `components` in ABI
     const castedSteps = steps.map(step => ({
       target: step.target as Address,
       value: BigInt(step.value),
