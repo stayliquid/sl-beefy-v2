@@ -45,6 +45,50 @@ export class WalletConnectionApi implements IWalletConnectionApi {
     this.onboard = undefined;
     this.onboardWalletInitializers = undefined;
   }
+  /**
+   * Re-inject a new backend wallet address for aggregator "data-only" usage.
+   * - Disconnect current wallet
+   * - Rebuild createOnboardWalletInitializers with new address
+   * - Re-init onboard & auto reconnect
+   */
+  public async reInjectBackendWallet(newAddress: string, rpcUrl: string) {
+    // 1) Disconnect existing wallet (if any)
+    await this.disconnect();
+
+    // 2) Force a rebuild of our “Onboard” with new createInjectedBackendWallet
+    //    by changing the onboardWalletInitializers or re-storing them
+    this.onboardWalletInitializers = [
+      // add your custom injected wallet, plus any other modules you normally do
+      // createInjectedWallets({ custom: customInjectedWallets, disable6963Support: false }),
+      // createInjectedBackendWallet(newAddress, rpcUrl),
+      WalletConnectionApi.createInjectedWalletsModule(),
+      createInjectedBackendWallet(newAddress, rpcUrl),
+      WalletConnectionApi.createWalletConnectModule(),
+      WalletConnectionApi.createMetamaskModule(),
+      createCoinbaseWalletModule(),
+      WalletConnectionApi.createCDCWalletModule(),
+      createTrustDesktopModule(),
+      WalletConnectionApi.createWalletConnectFireblocksModule(),
+    ];
+
+    // 3) Clear old Onboard instance and re-create it
+    this.onboard = undefined;
+    const onboard = this.getOnboard();
+
+    // 4) Attempt to connect the new “Injected Backend Wallet”
+    try {
+      const wallets = await onboard.connectWallet({
+        autoSelect: { label: 'Injected Backend Wallet', disableModals: true },
+      });
+      console.log('Re-inject wallet => connected wallets', wallets);
+      if (!wallets.length) {
+        throw new Error('No wallet returned, re-inject failed');
+      }
+    } catch (err) {
+      console.error('reInjectBackendWallet => connect failed', err);
+      throw err;
+    }
+  }
 
   private getOnboardWalletInitializers(): WalletInit[] {
     if (this.onboardWalletInitializers === undefined) {

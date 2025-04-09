@@ -19,7 +19,7 @@ import { Tenderly } from './components/Tenderly/Tenderly.tsx';
 import { BreakpointProvider } from './components/MediaQueries/BreakpointProvider.tsx';
 
 import { getTransactApi } from './features/data/apis/instances.ts';
-import BigNumber from 'bignumber.js';
+import { GeneratePayloadPage } from './GeneratePayloadPage.tsx';
 
 const HomePage = lazy(() => import('./features/home/HomePage.tsx'));
 const VaultPage = lazy(() => import('./features/vault/VaultPage.tsx'));
@@ -39,97 +39,6 @@ const Boundaries = memo(function Boundaries({ children }: BoundariesProps) {
     </ErrorBoundary>
   );
 });
-
-async function generateDepositPayload(vaultId: string, inputAmount: string) {
-  const state = store.getState();
-  console.log({ state, vaults: state.entities.vaults });
-  const api = await getTransactApi();
-
-  // Fetch available deposit options for the vault
-  const options = await api.fetchDepositOptionsFor(vaultId, () => state);
-  console.log({ options });
-  const option = options.find((o) => o.inputs[0].id === 'USDC')!; // picking the option to deposit with USDC
-  console.debug({ option });
-
-  const inputToken = option.inputs[0]; // usually the primary deposit token
-
-  // Generate quote for the deposit amount
-  const quotes = await api.fetchDepositQuotesFor(
-    [option],
-    [{ token: inputToken, amount: new BigNumber(inputAmount), max: false }],
-    () => state
-  );
-  console.log({ quotes });
-
-  const quote = quotes[0]; // pick randomly the first quote
-  console.debug({ quote });
-
-  // Get the transaction step
-  const step = await api.fetchDepositStep(quote, () => state, () => '');
-  console.debug({ step });
-
-   // Dispatch the thunk action to retrieve the actual payload
-  const result = await store.dispatch(step.action);
-
-  console.log('Deposit Payload:', result);
-}
-
-/**
- * Generates a withdrawal aggregator payload:
- * - If `all === true`, does a max withdraw
- * - Otherwise does a partial withdraw for `amount`
- */
-async function generateWithdrawPayload(vaultId: string, withdrawAmount: string) {
-  const state = store.getState();
-  const api = await getTransactApi();
-
-  // 1) Fetch aggregator withdraw options
-  const options = await api.fetchWithdrawOptionsFor(vaultId, () => state);
-  console.log('Withdraw Options =>', options);
-
-  if (!options.length) {
-    throw new Error('No withdraw options found for aggregator');
-  }
-
-  // For example, pick the first aggregator single-stable option
-  const option = options.find((o) => o.wantedOutputs[0].id === 'USDC')!; // picking the option to deposit with USDC
-  console.log('Chosen Withdraw Option =>', option);
-
-  // 2) If withdrawAmount > 0 => partial, else full
-  const isFull = new BigNumber(withdrawAmount).lte(0);
-  console.log({ isFull });
-
-  const inputAmounts = [
-    {
-      token: option.inputs[0],                     // aggregator share or deposit token
-      amount: isFull ? new BigNumber('999') : new BigNumber(withdrawAmount),
-      max: isFull,                                 // aggregator uses max: true to do full withdraw
-    },
-  ];
-
-  // 3) Build aggregator quotes
-  const quotes = await api.fetchWithdrawQuotesFor([option], inputAmounts, () => store.getState());
-  console.log('Withdraw Quotes =>', quotes);
-  if (!quotes.length) {
-    throw new Error('No aggregator quotes for that withdraw option');
-  }
-
-  // 4) Build aggregator step
-  const quote = quotes[0];
-  const step = await api.fetchWithdrawStep(quote, () => store.getState(), () => '');
-  console.log('Withdraw Step =>', step);
-
-  // 5) Dispatch aggregator step => final tx data or raw data
-  const result = await store.dispatch(step.action);
-  console.log('Withdraw Payload =>', result);
-}
-
-/** Simple convenience for full withdraw */
-async function generateWithdrawAllPayload(vaultId: string) {
-  // pass a 0 or negative amount so aggregator sets max: true
-  // or just skip the parameter and set `max = true` directly
-  return await generateWithdrawPayload(vaultId, '-1');
-}
 
 export const App = memo(function App() {
   useEffect(() => {
@@ -250,6 +159,12 @@ export const App = memo(function App() {
                   <Boundaries>
                     <TreasuryPage />
                   </Boundaries>
+                }
+              />
+              <Route
+                path="/generate-payload"
+                element={
+                    <GeneratePayloadPage />
                 }
               />
               <Route
